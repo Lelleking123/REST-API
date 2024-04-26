@@ -1,3 +1,4 @@
+// Importera nödvändiga
 const express = require("express");
 const app = express();
 const mysql = require("mysql2/promise");
@@ -7,6 +8,7 @@ const jwt = require("jsonwebtoken");
 
 const bodyParser = require("body-parser");
 
+// Funktion för att skapa en anslutning till databasen
 async function getDBConnection() {
   return await mysql.createConnection({
     host: "localhost",
@@ -16,18 +18,28 @@ async function getDBConnection() {
   });
 }
 
+// Hemlig nyckel för att signera JWT-token
 const secretKey = "Hemlig-nyckel";
 
+// Middleware-funktion för att verifiera JWT-token
 function verifieraToken(req, res, next) {
   const token = req.headers["authorization"];
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized: Token is required" });
+    return res.status(401).json({ error: "Obehörig: Token krävs" });
   }
 
-  jwt.verify(token, secretKey, (err, decoded) => {
+  const tokenParts = token.split(" ");
+  if (tokenParts.length !== 2 || tokenParts[0] !== "Bearer") {
+    return res.status(401).json({ error: "Obehörig: Ogiltigt tokenformat" });
+  }
+
+  const authToken = tokenParts[1];
+
+  jwt.verify(authToken, secretKey, (err, decoded) => {
     if (err) {
-      return res.status(401).json({ error: "Unauthorized: Invalid token" });
+      console.error("Token Verification Error:", err);
+      return res.status(401).json({ error: "Obehörig: Ogiltigt token" });
     }
     req.user = decoded;
     next();
@@ -37,31 +49,35 @@ function verifieraToken(req, res, next) {
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
+// Funktion för att hasha lösenord med bcrypt
 const hashPassword = async (password) => {
   const saltRounds = 10;
 
   const hashedPassword = await bcrypt.hash(password, saltRounds);
-  console.log("Generated hashed password:", hashedPassword);
+  console.log("Genererad hashat lösenord:", hashedPassword);
   return hashedPassword;
 };
 
+// Sänd indexsidan när någon ansluter till rotvägen
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "formulär.html"));
 });
 
-app.get("/users", verifieraToken, async (req, res) => {
+// Hämta alla användare från databasen
+app.get("/users", async (req, res) => {
   try {
     const connection = await getDBConnection();
     const [rows] = await connection.execute("SELECT * FROM users");
     await connection.end();
     res.json(rows);
   } catch (error) {
-    console.error("SQL Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("SQL-fel:", error);
+    res.status(500).json({ error: "Internt serverfel" });
   }
 });
 
-app.get("/users/:id", verifieraToken, async (req, res) => {
+// Hämta en specifik användare baserat på ID
+app.get("/users/:id", async (req, res) => {
   try {
     const connection = await getDBConnection();
     const [rows] = await connection.execute(
@@ -71,20 +87,21 @@ app.get("/users/:id", verifieraToken, async (req, res) => {
     await connection.end();
 
     if (rows.length === 0) {
-      res.status(404).json({ error: "User not found" });
+      res.status(404).json({ error: "Användare hittades inte" });
     } else {
       res.json(rows[0]);
     }
   } catch (error) {
-    console.error("SQL Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("SQL-fel:", error);
+    res.status(500).json({ error: "Internt serverfel" });
   }
 });
 
+// Skapa en ny användare
 app.post("/users", async (req, res) => {
   try {
     const connection = await getDBConnection();
-    const hashedPassword = await hashPassword(req.body.password); // Hash password
+    const hashedPassword = await hashPassword(req.body.password); // Kryptera lösenord
     const sql = "INSERT INTO users (username, password) VALUES (?, ?)";
     const [result] = await connection.execute(sql, [
       req.body.username,
@@ -97,47 +114,45 @@ app.post("/users", async (req, res) => {
       message: "Användare skapad",
     });
   } catch (error) {
-    console.error("SQL Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("SQL-fel:", error);
+    res.status(500).json({ error: "Internt serverfel" });
   }
 });
 
-app.put("/users/:id", async (req, res) => {
+// Uppdatera en användare
+app.put("/users/:id", verifieraToken, async (req, res) => {
   try {
     const connection = await getDBConnection();
     const sql = "UPDATE users SET username = ? WHERE id = ?";
     await connection.execute(sql, [req.body.username, req.params.id]);
-    await connection.end(); // Release the connection
-    res.status(200).json({ message: "User updated successfully" });
+    await connection.end(); // Släpp anslutningen
+    res.status(200).json({ message: "Användaren uppdaterad" });
   } catch (error) {
-    console.error("SQL Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("SQL-fel:", error);
+    res.status(500).json({ error: "Internt serverfel" });
   }
 });
 
-// Login endpoint
-
+// Inloggningsendpunkt
 app.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res
-        .status(400)
-        .json({ error: "Username and password are required" });
+      return res.status(400).json({ error: "Användarnamn och lösenord krävs" });
     }
 
     const connection = await getDBConnection();
 
     const [rows] = await connection.execute(
-      "SELECT * FROM users WHERE username = ?",
+      "SELECT id, password FROM users WHERE username = ?",
       [username]
     );
 
-    await connection.end(); // Close the database connection
+    await connection.end(); // Stäng databasanslutningen
 
     if (rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: "Användare hittades inte" });
     }
 
     const user = rows[0];
@@ -145,23 +160,24 @@ app.post("/login", async (req, res) => {
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
     if (!isPasswordCorrect) {
-      return res.status(401).json({ error: "Incorrect password" });
+      return res.status(401).json({ error: "Fel lösenord" });
     }
 
-    // Generate JWT token if password is correct
+    // Generera JWT-token om lösenordet är korrekt
     const token = jwt.sign({ id: user.id }, secretKey, {
-      expiresIn: "1h", // Token expires in 1 hour
+      expiresIn: "1h", // Tokenet löper ut om 1 timme
     });
 
-    // Return JWT token with expiration message
-    res.json({ token, message: "Token expires in 1 hour" });
+    // Returnera JWT-token med meddelande om utgång
+    res.json({ token, message: "Tokenet löper ut om 1 timme" });
   } catch (error) {
-    console.error("Login Error:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("Inloggningsfel:", error);
+    return res.status(500).json({ error: "Internt serverfel" });
   }
 });
 
+// Lyssna på port
 const port = 3000;
 app.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
+  console.log(`Servern lyssnar på http://localhost:${port}`);
 });
