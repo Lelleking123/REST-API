@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <main>
+      <h1>API Documentation</h1>
+      <ul>
+        <li>GET /users - Returns a list of all users</li>
+        <li>GET /users/:id - Returns a user specified by the id</li>
+        <li>
+          POST /users - Creates a new user. Expected body: { "username":
+          "value", "password": "value" }
+        </li>
+        <li>
+          PUT /users/:id - Updates a user specified by the id. Expected body: {
+          "username": "value", "password": "value" }
+        </li>
+        <li>
+          POST /login - User login. Expected body: { "username": "value",
+          "password": "value" }
+        </li>
+      </ul>
+      <section>
+        <h1>Sign In</h1>
+        <form action="/users" method="POST">
+          <input type="text" name="username" placeholder="USERNAME" />
+          <input type="password" name="password" placeholder="PASSWORD" />
+          <input type="submit" value="Submit" />
+        </form>
+      </section>
+      <section>
+        <h1>Login</h1>
+        <form id="loginForm">
+          <input type="text" id="loginUsername" placeholder="Username" />
+          <input type="password" id="loginPassword" placeholder="Password" />
+          <button type="button" onclick="login()">Login</button>
+        </form>
+        <div id="loginMessage"></div>
+      </section>
+      <section>
+        <h1>Update User</h1>
+        <form id="updateUserForm">
+          <input type="text" id="userId" placeholder="User ID" />
+          <input type="text" id="updateUsername" placeholder="New Username" />
+          <input
+            type="password"
+            id="updatePassword"
+            placeholder="New Password"
+          />
+          <button type="button" onclick="updateUser()">Update User</button>
+        </form>
+        <div id="updateUserMessage"></div>
+      </section>
+      <section>
+        <h1>List of Users</h1>
+        <button onclick="fetchUsers()">Fetch Users</button>
+        <div id="userList"></div>
+      </section>
+      <section>
+        <h1>Get User by ID</h1>
+        <form id="getUserForm">
+          <input type="text" id="userIdGet" placeholder="Enter User ID" />
+          <button type="button" onclick="fetchUser()">Fetch User</button>
+        </form>
+        <div id="userDetails"></div>
+      </section>
+    </main>
+
+    <script>
+      async function fetchUsers() {
+        const response = await fetch("/users");
+        const users = await response.json();
+        const userList = document.getElementById("userList");
+        userList.innerHTML =
+          "<pre>" + JSON.stringify(users, null, 2) + "</pre>";
+      }
+
+      async function fetchUser() {
+        const userId = document.getElementById("userIdGet").value;
+        const response = await fetch(`/users/${userId}`);
+        const user = await response.json();
+        const userDetails = document.getElementById("userDetails");
+        userDetails.innerHTML = `<p>ID: ${user.id}</p><p>Username: ${user.username}</p>`;
+      }
+
+      async function login() {
+        const username = document.getElementById("loginUsername").value;
+        const password = document.getElementById("loginPassword").value;
+
+        const response = await fetch("/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username, password }),
+        });
+
+        const data = await response.json();
+        const loginMessage = document.getElementById("loginMessage");
+        if (response.status === 200) {
+          loginMessage.innerHTML = `<p>Login successful. User ID: ${data.id}</p>`;
+        } else {
+          loginMessage.innerHTML = `<p>${data.error}</p>`;
+        }
+      }
+
+      async function updateUser() {
+        const userId = document.getElementById("userId").value;
+        const updateUsername = document.getElementById("updateUsername").value;
+        const updatePassword = document.getElementById("updatePassword").value;
+
+        const response = await fetch(`/users/${userId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: updateUsername,
+            password: updatePassword,
+          }),
+        });
+
+        const data = await response.json();
+        const updateUserMessage = document.getElementById("updateUserMessage");
+        updateUserMessage.innerHTML = `<p>${data.message}</p>`;
+      }
+    </script>
+  </body>
+</html>
